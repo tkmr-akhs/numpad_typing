@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <title>NumPad Typing Training</title>
+    <meta charset="UTF-8">
+    <style type="text/css">
+        body {
+            color: rgb(0, 0, 0);
+            background-color: rgb(255, 255, 255);
+        }
+
+        .typed {
+            background-color: rgb(192, 255, 192);
+            color: rgb(64, 192, 0);
+        }
+
+        .untyped {
+            color: rgb(192, 192, 192);
+        }
+
+        .mistyped {
+            background-color: rgb(255, 192, 192);
+            color: rgb(255, 96, 96);
+        }
+
+        #typingArea {
+            font-size: 30px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body {
+                color: rgb(192, 192, 192);
+                background-color: rgb(32, 32, 32);
+            }
+
+            .typed {
+                background-color: rgb(48, 128, 0);
+                color: rgb(96, 255, 32);
+            }
+
+            .untyped {
+                color: rgb(128, 128, 128);
+            }
+
+            .mistyped {
+                background-color: rgb(128, 32, 32);
+                color: rgb(255, 128, 128);
+            }
+        }
+    </style>
+    <script type="text/javascript" defer>
+        (function () {
+            const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+            const SYMBOLS = [".", "+", "-", "*", "/"];
+
+            class TypingTestApp {
+                constructor() {
+                    this.mistypeIndex = -1;
+                    this.typingArea = null;
+                    this.inputString = "";
+                    this.typingTestString = "";
+                    this.totalCharactersTyped = 0;
+                    this.prevTime = null;
+                    this.totalTimeElapsed = 0;
+                    this.charactersTyped = 0;
+                    this.errorsMade = 0;
+                }
+
+                generateTypingTestString(testLength) {
+                    let result = "";
+                    let is_next_digit = true;
+
+                    for (let i = 0; i < testLength; i++) {
+                        let c;
+                        if (is_next_digit || i > testLength - 2) {
+                            c = DIGITS[Math.floor(Math.random() * DIGITS.length)];
+                            is_next_digit = false;
+                        } else {
+                            let index = Math.floor(Math.random() * (DIGITS.length + SYMBOLS.length));
+                            if (index < DIGITS.length) {
+                                c = DIGITS[index];
+                                is_next_digit = false;
+                            } else {
+                                c = SYMBOLS[index - DIGITS.length];
+                                is_next_digit = true;
+                            }
+                        }
+                        result += c;
+                    }
+                    return result;
+                }
+
+                initializeDisplay() {
+                    this.mistypeIndex = -1;
+                    this.charactersTyped = 0;
+                    this.typingTestString = this.generateTypingTestString(10);
+                    this.inputString = "";
+                    this.typingArea.innerHTML = "";
+                    for (let i = 0; i < this.typingTestString.length; i++) {
+                        this.addCharacterToDisplay(this.typingTestString[i], "untyped");
+                    }
+
+                    this.addCharacterToDisplay("↓", "untyped");
+                }
+
+                addCharacterToDisplay(char, statusClass) {
+                    const span = document.createElement("span");
+                    span.textContent = char;
+                    span.className = statusClass;
+                    this.typingArea.appendChild(span);
+                }
+
+                updateStats() {
+                    const currentTime = new Date();
+                    const elapsedMinutes = this.totalTimeElapsed / 1000 / 60; // in minutes
+                    const speed = this.totalTimeElapsed === 0 ? 0 : this.totalCharactersTyped / elapsedMinutes;
+                    const errorRate = (this.errorsMade / this.totalCharactersTyped) * 100;
+                    document.getElementById("speed").textContent = `Speed: ${speed.toFixed(2)} cpm`;
+                    document.getElementById("err_rate").textContent = `Error Rate: ${errorRate.toFixed(2)}%`;
+                }
+
+                handleKeyPress(event) {
+                    const char = event.key;
+
+                    // 現在のインデックス (入力文字列の最後の文字を示すインデックス) を得る。
+                    let currentIndex = this.inputString.length - 1;
+
+                    // Enter と Backspace 以外の特殊キーを無視。
+                    if (event.key.length !== 1 && event.key !== 'Enter' && event.key !== 'Backspace') {
+                        return;
+                    }
+
+                    // 経過時間の更新処理。
+                    this.updateElapsedTime();
+
+                    // バック スペースの処理。
+                    if (char === "Backspace") {
+                        this.handleBackspaceKeyPress(currentIndex);
+                        this.updateStats();
+                        return;
+                    }
+
+                    // キー タイプのカウント。
+                    this.charactersTyped++;
+                    this.totalCharactersTyped++;
+
+                    // エンター キーの処理。
+                    if (char === "Enter") {
+                        this.handleEnterKeyPress();
+                        this.updateStats();
+                        return;
+                    }
+
+                    // ここまでで特殊キーの処理が終わっているので、入力文字を追加。
+                    this.inputString += char;
+
+                    // 入力文字を追加したので、現在のインデックスを更新。
+                    //currentIndex = this.inputString.length - 1;
+                    currentIndex += 1;
+
+                    // テスト用文字列の長さを超過した場合、「X」で埋める。
+                    if (this.inputString.length > this.typingTestString.length + 1) {
+                        this.handleOverflowInput();
+                        this.updateStats();
+                        return;
+                    }
+
+                    // ここまでで特殊な処理は終わっているので、文字の入力が正しいかチェック。
+                    this.checkAndDisplayTypedChar(currentIndex, char);
+                    this.updateStats();
+                }
+
+                updateElapsedTime() {
+                    if (this.charactersTyped === 0) {
+                        // 最初のキー入力で測定開始。
+                        this.prevTime = new Date();
+                    } else {
+                        // 前回の測定時刻からの経過時間を累積する。
+                        const currentTime = new Date();
+                        this.totalTimeElapsed += currentTime - this.prevTime;
+                        this.prevTime = currentTime;
+                    }
+                }
+
+                handleBackspaceKeyPress(currentIndex) {
+                    if (this.inputString.length > 0) {
+                        // 最初のミスタイプを削除するなら、ミスタイプ位置をリセット。
+                        if (currentIndex === this.mistypeIndex) this.mistypeIndex = -1;
+
+                        if (this.inputString.length > this.typingTestString.length + 1) {
+                            // 長さが超過している場合は、要素を削除。
+                            this.typingArea.removeChild(this.typingArea.lastChild);
+                        } else {
+                            // 超過していない場合は、未入力状態に戻す。
+                            this.typingArea.children[this.inputString.length - 1].className = "untyped";
+                        }
+
+                        // 入力文字列の末尾一文字を削除。
+                        this.inputString = this.inputString.slice(0, -1);
+                    }
+                }
+
+                handleEnterKeyPress() {
+                    if (this.typingTestString === this.inputString) {
+                        // 正しい文字列が入力されていたら次のテストへ。
+                        this.initializeDisplay();
+                    } else {
+                        // 間違った文字列が入力されている状態で Enter キーが入力されたらミスタイプ扱い。
+                        this.errorsMade++;
+                    }
+                }
+
+                handleOverflowInput() {
+                    // テスト用文字列を超過する場合は「X」で埋める。
+                    this.addCharacterToDisplay("X", "mistyped");
+                    this.errorsMade++;
+                }
+
+                checkAndDisplayTypedChar(currentIndex, char) {
+                    if (char === this.typingTestString[currentIndex]) {
+                        if (this.mistypeIndex === -1) {
+                            this.typingArea.children[currentIndex].className = "typed";
+                        }
+                        else {
+                            // 正しい文字列が入力されても、より前にミスタイプがあるなら表示はミスタイプにする。
+                            // (ミスタイプとしてカウントはしない)
+                            this.typingArea.children[currentIndex].className = "mistyped";
+                        }
+                    } else {
+                        if (this.mistypeIndex === -1) {
+                            // 最初のミスタイプなら文字位置を記録。
+                            this.mistypeIndex = currentIndex;
+                        }
+                        this.typingArea.children[currentIndex].className = "mistyped";
+                        this.errorsMade++;
+                    }
+                }
+            }
+
+            document.addEventListener("DOMContentLoaded", function () {
+                const app = new TypingTestApp();
+                app.typingArea = document.getElementById("typingArea");
+                app.initializeDisplay();
+
+                window.addEventListener("keydown", app.handleKeyPress.bind(app));
+            });
+        })();
+    </script>
+</head>
+
+<body>
+    <div id="typingArea"></div>
+    <div id="speed">Speed: 0 cpm</div>
+    <div id="err_rate">Error Rate: 0%</div>
+</body>
+
+</html>
